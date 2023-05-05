@@ -3,6 +3,43 @@
 (defvar bq-actions '("select" "mark" "kill" "open" "copy" "save" "delete"))
 (defvar bq-conditionals '("where" "if" "and" "not" "like"))
 (defvar bq-orders '("desc" "asc"))
+(defvar buffer-columns '("crm" "name" "size" "mode" "file"))
+(defvar BQBuffers)
+
+(defun bq--get-buffer-data ()
+  "Inital Call to get Buffers metadata and store in symbol BQBuffers."
+  ;; get lines of buffers that are marked in the buffer list
+  (let (bz buffers-marked bq-buffer bl-split-string (iter 0))
+    (with-current-buffer "*Buffer List*"
+      (setq bl-split-string (split-string (buffer-substring-no-properties (point-min) (point-max)) "\n"))
+      (dolist (bz bl-split-string)
+	(setq iter (+ iter 1))
+	(if (> (length bz) 0)
+	    (if (cl-search (substring bz 0 1) ">")
+		(put 'bq-buffer 'marks iter) ;; saving the line in the buffer list.. maybe not great?
+	      (message "na bra"))))))
+  
+  ;; get buffer names and save them
+  (let (bz buffer-names bq-buffer)
+    (dolist (bz (buffer-list))
+      (push (buffer-name bz) buffer-names))
+    (put 'bq-buffer 'names buffer-names)
+    (message "%s" (get 'bq-buffer 'names)))
+  
+  ;; get buffer filenames and save them
+  (let (bz buffer-filenames bq-buffer)
+    (dolist (bz (buffer-list))
+      (push (buffer-file-name bz) buffer-filenames))
+    (put 'bq-buffer 'filenames buffer-filenames)
+    (message "%s" (get 'bq-buffer 'filenames)))
+
+  ;; get buffer sizes and save them
+  (let (bz buffer-sizes bq-buffer)
+    (dolist (bz (buffer-list))
+      (push (buffer-size bz) buffer-sizes))
+    (put 'bq-buffer 'sizes buffer-sizes)
+    (message "%s" (get 'bq-buffer 'sizes)))
+  )
 
 
 (defun bq-query()
@@ -12,18 +49,24 @@
     (put 'query 'split-query (split-string input))
     (if (member (nth 0 (get 'query 'split-query)) bq-actions)
 	(cond
-	 ((cl-search (nth 0 (get 'query 'split-query)) "select") (bq-select 'query));; I want to use symbols here to call functions.. look into later
+	 ((cl-search (nth 0 (get 'query 'split-query)) "select") (bq-select (get 'query 'split-query)));; I want to use symbols here to call functions.. look into later
 	 )
       (message "sorry, not a valid statement..."))
     )
   )
 
-(defun bq-select (bq-list)
-  (dolist (bqs (get 'bq-symbol 'split-input))
-    (message bqs)
-    ))
+(defun bq-select (q-list)
+"Allways assuming buffers table right now."
+(let (q-column res q-conditionals)
+  (cond
+   ((member (nth 1 q-list) buffer-columns) (setq q-column '((nth 1 q-list))))
+   ((string= (nth 1 q-list) "*") (setq q-column buffer-columns))
+   )
+   (dolist (bqr ))
+  ))
 
 
+(buffer-list)
 
 (defun bb-query-buffers (query)
   "A user function where you can manage buffers with a sql like language."
@@ -51,6 +94,28 @@
   (message action query-list)
   )
 
+
+(let (ztest
+      col
+      (buffer-cols '("crm" "name" "size" "mode" "file"))
+      qselected
+      (res '()))
+  (switch-to-buffer "*Buffer List*")
+  (setq qselected "name")
+  (setq ztest (buffer-substring-no-properties (point-min) (point-max)))
+  (dolist (bll (split-string ztest "\n"))
+    (setq col (split-string bll "   "))
+    ;; (message col)
+    (message "%s" bll)
+    (if (member qselected buffer-cols)
+	(push (nth (cl-position qselected buffer-cols :test 'equal) col) res))
+  ;; (message (nth 100 res)) ;; if not found returns nil, which is nice
+    )
+  ;; (message "%s" res)
+  )
+
+
+
 "select * from buffers where .py in name" ;;will show message of buffer data
 ""
 "mark * from buffers"
@@ -67,14 +132,14 @@
 ;; (put 'bzb-testz 'action "select")
 ;; (get 'bzb-testz 'action)
 
-;; (let (bbl s-test)
-;;   (dolist (bbl (buffer-list))
-;;     (if (cl-search "Open" (buffer-name bbl))
-;; 	(progn
-;; 	  (switch-to-buffer "*Buffer List*")
-;; 	  (setq s-test (buffer-substring-no-properties (point-min) (point-max)))
-;; 	  (message (split-string s-test "\n"))
-;; 	  ;; (move-to-window-line 2)
-;; 	  ;; (Buffer-menu-mark)
-;; 	  )
-;;       )))
+(let (bbl s-test)
+  (dolist (bbl (buffer-list))
+    (if (cl-search "Open" (buffer-name bbl))
+	(progn
+	  (switch-to-buffer "*Buffer List*")
+	  (setq s-test (buffer-substring-no-properties (point-min) (point-max)))
+	  (message (split-string s-test "\n"))
+	  ;; (move-to-window-line 2)
+	  ;; (Buffer-menu-mark)
+	  )
+      )))
