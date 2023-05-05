@@ -8,6 +8,13 @@
 
 (defun bq--get-buffer-data ()
   "Inital Call to get Buffers metadata and store in symbol BQBuffers."
+  (let (bq-start-buffer)
+  (setq bq-start-buffer (current-buffer))
+  (if (not (get-buffer "*Buffer List*"))
+      (progn
+	(buffer-menu)
+	(switch-to-buffer bq-start-buffer))))
+
   ;; get lines of buffers that are marked in the buffer list
   (let (bz buffers-marked bq-buffer bl-split-string (iter 0))
     (with-current-buffer "*Buffer List*"
