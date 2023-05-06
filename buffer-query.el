@@ -103,22 +103,34 @@
   (interactive)
   (bq--get-buffer-data)
   ;; (bq--save) ;; TODO do we need to save and load?
-  (let (input split-query)
+  (let (input split-query xyz iter columns)
     (setq input (read-string "command:" nil nil nil))
     (setq split-query (split-string input))
     (put 'BQQuery 'query input)
     ;; (push input (get 'BQQuery 'query-history input)) ;; TODO if 'query-history is nil, declare it with an empty list
+    (dolist (yxz split-query)
+      (setq iter (+ iter 1))
+      (cond
+       ((member xyz bq-tables) (put 'BQQuery 'table xyz))
+       ((member xyz bq-orders) (put 'BQQuery 'order xyz))
+       ((member xyz bq-conditionals) (put 'BQQuery 'condition xyz))
+       ((member xyz bq-columns) (push xyz columns))))
+    (put 'BQQuery 'columns columns)
     (if (member (nth 0 split-query) bq-actions)
-	(cond
-	 ((cl-search (nth 0 split-query) "select") (bq-select split-query));; I want to use symbols here to call functions.. look into later
-	 )
-      (message "sorry, not a valid statement..."))
-    )
-  )
+	(cond ((cl-search (nth 0 split-query) "select") (bq-select))
+	      ((cl-search (nth 0 split-query) "mark") (bq-mark))
+	      ((cl-search (nth 0 split-query) "kill") (bq-kill))
+	      ((cl-search (nth 0 split-query) "save") (bq-save))
+	      ((cl-search (nth 0 split-query) "open") (bq-open)))
+      (message "sorry, not a valid statement..."))))
 
-(defun bq-select (q-list)
+(defun bq-mark ()
 "Allways assuming buffers table right now Q-LIST."
 (message "%s" (string q-list)))
+
+(defun bq-select ()
+"Allways assuming buffers table right now Q-LIST."
+(message "%s" (string "sdfsdfds")))
 ;; (let (q-column res q-conditionals)
 ;;   (cond
 ;;    ((member (nth 1 q-list) buffer-columns) (setq q-column '((nth 1 q-list))))
