@@ -1,100 +1,131 @@
 ;;; Code:
+(require 'sqlite)
+
 (defvar bq-tables '("buffers"))
 (defvar bq-actions '("select" "mark" "kill" "open" "copy" "save" "delete"))
 (defvar bq-conditionals '("where" "if" "and" "not" "like"))
 (defvar bq-orders '("desc" "asc"))
 (defvar buffer-columns '("crm" "name" "size" "mode" "file"))
-(defvar BQBuffers)
+(defvar BQBuffers "")
+(defvar BQQuery "")
+(defvar BQSetup nil)
+(defvar BQ-DBconnection "")
+(defvar BQ-SQLfile "~/.emacs.d/buffer-query/bqbuffers.db")
+(defvar BQ-Metadata-file "~/.emacs.d/buffer-query/bq-data.el")
+
+;; .... i mean i was thinking about writing my own sql parsing tool...
+;; but hell.. I mean i could just use a sql lite file and actually use sql?
+;; I think if I do both (as a pickable option) that would be cool. Because there is alot of churn in buffers.
+;; I think maybe some people would just want it to run without the sqlite dependancies
+
+;; FIRST TIME SETUPS
+(defun bq--initial-setup()
+  "Initial setup, seeing if you need sqlite3 installed, if you want to use sqlite or nosql."
+  (let (u-input (choices '("y", "n")))
+    (setq u-input (completing-read "Do you want to use SQL? (y/n):" choices))
+    (cond
+     ((string= u-input "y") (bqsql--initial-setup-sql))
+     ((string= u-input "n") (message "continue as normal..."))
+     ))
+  (setq BQSetup t))
+
+(defun bqsql--initial-setup-sql ()
+  "Intial setup of sql."
+  (let (sql-version)
+    (setq sql-version (shell-command-to-string "sqlite --version"))
+    (if (cl-search "not found" sql-version)
+	(message "Please install sqlite3")
+      (progn
+	(message "else")
+	(shell-command-to-string (format "touch %s" BQ-SQLfile))
+	(setq BQ-DBconnection (sqlite-init BQ-SQLfile))))))
+
+
+
+;; SAVE AND LOAD
+(defun bq--save()
+  "Save BQBuffers data to bq-data file."
+  (let ((save-file-contents "(setq BQBuffers \"\")\n") sfc)
+    (dolist (sfc (symbol-plist 'BQBuffers))
+      (if (and (member sfc '(names filenames sizes marks)) (not (string= "" (symbol-name sfc))))
+	  (setq save-file-contents (concat save-file-contents (format "(put 'BQBuffers '%s '%s)\n" (symbol-name sfc) (get 'BQBuffers sfc))))))
+    (setq save-file-contents (concat save-file-contents (format "(provide 'bq-data)\n;;; bq-data.el ends here" (symbol-name sfc))))
+    (with-temp-buffer
+      (insert save-file-contents)
+      (write-region (point-min) (point-max) BQ-Metadata-file))))
+
+(defun bq--load()
+  "Load metadata file and update symbols."
+  (if (file-exists-p BQ-Metadata-file)(load BQ-Metadata-file)))
+
+(defun bqsql--save()
+  "Test.")
+
+(defun bqsql--load()
+  "Test.")
+
+
 
 (defun bq--get-buffer-data ()
   "Inital Call to get Buffers metadata and store in symbol BQBuffers."
   (let (bq-start-buffer)
   (setq bq-start-buffer (current-buffer))
   (if (not (get-buffer "*Buffer List*"))
-      (progn
-	(buffer-menu)
-	(switch-to-buffer bq-start-buffer))))
-
+      (progn (buffer-menu)
+	     (switch-to-buffer bq-start-buffer))))
   ;; get lines of buffers that are marked in the buffer list
-  (let (bz buffers-marked bq-buffer bl-split-string (iter 0))
+  (let (bz (iter 0))
     (with-current-buffer "*Buffer List*"
-      (setq bl-split-string (split-string (buffer-substring-no-properties (point-min) (point-max)) "\n"))
-      (dolist (bz bl-split-string)
+      (dolist (bz (split-string (buffer-substring-no-properties (point-min) (point-max)) "\n"))
 	(setq iter (+ iter 1))
 	(if (> (length bz) 0)
 	    (if (cl-search (substring bz 0 1) ">")
-		(put 'bq-buffer 'marks iter) ;; saving the line in the buffer list.. maybe not great?
-	      (message "na bra"))))))
-  
+		(put 'BQBuffers 'marks iter)
+	      (message "na"))))))
   ;; get buffer names and save them
-  (let (bz buffer-names bq-buffer)
+  (let (bz buffer-names)
     (dolist (bz (buffer-list))
       (push (buffer-name bz) buffer-names))
-    (put 'bq-buffer 'names buffer-names)
-    (message "%s" (get 'bq-buffer 'names)))
-  
+    (put 'BQBuffers 'names buffer-names))
   ;; get buffer filenames and save them
-  (let (bz buffer-filenames bq-buffer)
+  (let (bz buffer-filenames)
     (dolist (bz (buffer-list))
       (push (buffer-file-name bz) buffer-filenames))
-    (put 'bq-buffer 'filenames buffer-filenames)
-    (message "%s" (get 'bq-buffer 'filenames)))
-
+    (put 'BQBuffers 'filenames buffer-filenames))
   ;; get buffer sizes and save them
-  (let (bz buffer-sizes bq-buffer)
+  (let (bz buffer-sizes)
     (dolist (bz (buffer-list))
       (push (buffer-size bz) buffer-sizes))
-    (put 'bq-buffer 'sizes buffer-sizes)
-    (message "%s" (get 'bq-buffer 'sizes)))
-  )
+    (put 'BQBuffers 'sizes buffer-sizes)))
 
 
 (defun bq-query()
   (interactive)
-  (let (query input)
+  (bq--get-buffer-data)
+  ;; (bq--save) ;; TODO do we need to save and load?
+  (let (input split-query)
     (setq input (read-string "command:" nil nil nil))
-    (put 'query 'split-query (split-string input))
-    (if (member (nth 0 (get 'query 'split-query)) bq-actions)
+    (setq split-query (split-string input))
+    (put 'BQQuery 'query input)
+    ;; (push input (get 'BQQuery 'query-history input)) ;; TODO if 'query-history is nil, declare it with an empty list
+    (if (member (nth 0 split-query) bq-actions)
 	(cond
-	 ((cl-search (nth 0 (get 'query 'split-query)) "select") (bq-select (get 'query 'split-query)));; I want to use symbols here to call functions.. look into later
+	 ((cl-search (nth 0 split-query) "select") (bq-select split-query));; I want to use symbols here to call functions.. look into later
 	 )
       (message "sorry, not a valid statement..."))
     )
   )
 
 (defun bq-select (q-list)
-"Allways assuming buffers table right now."
-(let (q-column res q-conditionals)
-  (cond
-   ((member (nth 1 q-list) buffer-columns) (setq q-column '((nth 1 q-list))))
-   ((string= (nth 1 q-list) "*") (setq q-column buffer-columns))
-   )
-   (dolist (bqr ))
-  ))
-
-
-(buffer-list)
-
-(defun bb-query-buffers (query)
-  "A user function where you can manage buffers with a sql like language."
-  (interactive)
-  (let (q-list
-	q-word
-	;; q-hash
-	(iter 0)
-	(action-words '("select" "mark" "kill" "open" "copy" "save" "delete")) ;; select will be querying
-	(conditional-words '("where" "if" "and" "not" "like"))
-	(order-words '("desc" "asc"))
-	(to-order '("order"))
-	(tables '("buffers"))
-	(buffer-columns '("crm" "name" "size" "mode" "file")))
-      (setq q-list (split-string query))
-      (dolist (q-word q-list)
-	(message q-word)
-	
-	(cond((member q-word action-words) (message "")))
-	(setq iter (+ iter 1)))))
-(bb-query-buffers "select * from buffers")
+"Allways assuming buffers table right now Q-LIST."
+(message "%s" (string q-list)))
+;; (let (q-column res q-conditionals)
+;;   (cond
+;;    ((member (nth 1 q-list) buffer-columns) (setq q-column '((nth 1 q-list))))
+;;    ((string= (nth 1 q-list) "*") (setq q-column buffer-columns))
+;;    )
+;;    (dolist (bqr ))
+;;   ))
 
 (defun bb-do-action (action query-list)
   "based off an action do "
@@ -133,12 +164,6 @@
 "open buffer where name main.py" ;; open will open first result
 
 
-
-
-
-;; (put 'bzb-testz 'action "select")
-;; (get 'bzb-testz 'action)
-
 (let (bbl s-test)
   (dolist (bbl (buffer-list))
     (if (cl-search "Open" (buffer-name bbl))
@@ -150,3 +175,6 @@
 	  ;; (Buffer-menu-mark)
 	  )
       )))
+
+(provide 'buffer-list-sql)
+;;; buffer-list-sql.el ends here
