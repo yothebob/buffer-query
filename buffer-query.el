@@ -4,7 +4,6 @@
 (defvar bq-tables '("buffers"))
 (defvar bq-actions '("select" "mark" "kill" "open" "copy" "save" "delete"))
 (defvar bq-conditionals '("where" "if" "and" "not" "like"))
-(defvar bq-orders '("desc" "asc"))
 (defvar buffer-columns '("crm" "name" "size" "mode" "file"))
 (defvar BQBuffers "")
 (defvar BQQuery "")
@@ -106,6 +105,7 @@
 
 (defun bq-query()
   (interactive)
+  (setq BQQuery nil)
   (bq--get-buffer-data)
   ;; (bq--save) ;; TODO do we need to save and load?
   (let (input split-query xyz (iter 0) columns)
@@ -113,11 +113,10 @@
     (setq split-query (split-string input " "))
     (put 'BQQuery 'query input)
     ;; (push input (get 'BQQuery 'query-history input)) ;; TODO if 'query-history is nil, declare it with an empty list
-    (dolist (yxz split-query)
+    (dolist (xyz split-query)
       ;; (setq iter (+ iter 1))
       (cond
        ((member xyz bq-tables) (put 'BQQuery 'table xyz))
-       ((member xyz bq-orders) (put 'BQQuery 'order xyz))
        ((member xyz bq-conditionals) (put 'BQQuery 'condition xyz))
        ((member xyz buffer-columns) (push xyz columns)) ;; this one is only here because we only have one 'table'
        ))
@@ -131,7 +130,7 @@
       (message "sorry, not a valid statement..."))))
 
 (defun check-marked-buffer (buffer)
-  (message "yes")
+  (string "yes")
   )
 
 (defun bq-mark ()
@@ -142,23 +141,23 @@
 "Allways assuming buffers table right now Q-LIST."
 ;; (let (split-q)
 ;;   (setq split-q (string-split (get 'BQQuery 'query))))
+;; (message (symbol-plist 'BQQuery))
 (let (selectors buff sel (res '()) (buffer-res '()))
   (cond
-   ((not (get 'BQQuery 'columns)) (setq selectors (get 'BQQuery 'columns)))
+   ((get 'BQQuery 'columns) (setq selectors (get 'BQQuery 'columns)))
    ((cl-search "*" (get 'BQQuery 'query)) (setq selectors buffer-columns)))
-  (message "%s" selectors)
   (dolist (buff (buffer-list))
     (setq buffer-res '())
     (dolist (sel selectors)
       (cond
-       ((string= "crm" sel) (push buffer-res (check-marked-buffer buff)))
-       ((string= "name" sel) (push buffer-res (buffer-name buff)))
-       ((string= "size" sel) (push buffer-res (buffer-size buff)))
-       ;; ((member "mode" sel) (push buffer-res (buffer-mo buff)))
-       ((string= "file" sel) (push buffer-res (buffer-file-name buff)))))
-    (push res buffer-res)
-    (message "%s" buffer-res))
-  (message "%s" res)))
+       ((string= "crm" sel)  (push "yes" buffer-res))
+       ((string= "name" sel) (push (buffer-name buff) buffer-res))
+       ((string= "size" sel) (push (buffer-size buff) buffer-res))
+       ((string= "mode" sel) (push (buffer-local-value 'major-mode (get-buffer buff)) buffer-res))
+       ((string= "file" sel) (push (buffer-file-name buff) buffer-res))))
+    (push buffer-res res))
+  (message "res: %s" res)))
+
   ;; loop through and save selections from available buffers, then display to user
 
 ;; (let (q-column res q-conditionals)
