@@ -103,18 +103,19 @@
   (interactive)
   (bq--get-buffer-data)
   ;; (bq--save) ;; TODO do we need to save and load?
-  (let (input split-query xyz iter columns)
+  (let (input split-query xyz (iter 0) columns)
     (setq input (read-string "command:" nil nil nil))
-    (setq split-query (split-string input))
+    (setq split-query (split-string input " "))
     (put 'BQQuery 'query input)
     ;; (push input (get 'BQQuery 'query-history input)) ;; TODO if 'query-history is nil, declare it with an empty list
     (dolist (yxz split-query)
-      (setq iter (+ iter 1))
+      ;; (setq iter (+ iter 1))
       (cond
        ((member xyz bq-tables) (put 'BQQuery 'table xyz))
        ((member xyz bq-orders) (put 'BQQuery 'order xyz))
        ((member xyz bq-conditionals) (put 'BQQuery 'condition xyz))
-       ((member xyz bq-columns) (push xyz columns))))
+       ((member xyz buffer-columns) (push xyz columns)) ;; this one is only here because we only have one 'table'
+       ))
     (put 'BQQuery 'columns columns)
     (if (member (nth 0 split-query) bq-actions)
 	(cond ((cl-search (nth 0 split-query) "select") (bq-select))
@@ -126,11 +127,20 @@
 
 (defun bq-mark ()
 "Allways assuming buffers table right now Q-LIST."
-(message "%s" (string q-list)))
+(message "marking"))
 
 (defun bq-select ()
 "Allways assuming buffers table right now Q-LIST."
-(message "%s" (string "sdfsdfds")))
+;; (let (split-q)
+;;   (setq split-q (string-split (get 'BQQuery 'query))))
+(let (selectors)
+  (if (get 'BQQuery 'columns)
+      (setq selectors (get 'BQQuery 'columns))
+  (setq selectors buffer-columns))
+  ;; loop through and save selections from available buffers, then display to user
+  )
+)
+
 ;; (let (q-column res q-conditionals)
 ;;   (cond
 ;;    ((member (nth 1 q-list) buffer-columns) (setq q-column '((nth 1 q-list))))
@@ -145,24 +155,24 @@
   )
 
 
-(let (ztest
-      col
-      (buffer-cols '("crm" "name" "size" "mode" "file"))
-      qselected
-      (res '()))
-  (switch-to-buffer "*Buffer List*")
-  (setq qselected "name")
-  (setq ztest (buffer-substring-no-properties (point-min) (point-max)))
-  (dolist (bll (split-string ztest "\n"))
-    (setq col (split-string bll "   "))
-    ;; (message col)
-    (message "%s" bll)
-    (if (member qselected buffer-cols)
-	(push (nth (cl-position qselected buffer-cols :test 'equal) col) res))
-  ;; (message (nth 100 res)) ;; if not found returns nil, which is nice
-    )
-  ;; (message "%s" res)
-  )
+;; (let (ztest
+;;       col
+;;       (buffer-cols '("crm" "name" "size" "mode" "file"))
+;;       qselected
+;;       (res '()))
+;;   (switch-to-buffer "*Buffer List*")
+;;   (setq qselected "name")
+;;   (setq ztest (buffer-substring-no-properties (point-min) (point-max)))
+;;   (dolist (bll (split-string ztest "\n"))
+;;     (setq col (split-string bll "   "))
+;;     ;; (message col)
+;;     (message "%s" bll)
+;;     (if (member qselected buffer-cols)
+;; 	(push (nth (cl-position qselected buffer-cols :test 'equal) col) res))
+;;   ;; (message (nth 100 res)) ;; if not found returns nil, which is nice
+;;     )
+;;   ;; (message "%s" res)
+;;   )
 
 
 
@@ -176,17 +186,17 @@
 "open buffer where name main.py" ;; open will open first result
 
 
-(let (bbl s-test)
-  (dolist (bbl (buffer-list))
-    (if (cl-search "Open" (buffer-name bbl))
-	(progn
-	  (switch-to-buffer "*Buffer List*")
-	  (setq s-test (buffer-substring-no-properties (point-min) (point-max)))
-	  (message (split-string s-test "\n"))
-	  ;; (move-to-window-line 2)
-	  ;; (Buffer-menu-mark)
-	  )
-      )))
+;; (let (bbl s-test)
+;;   (dolist (bbl (buffer-list))
+;;     (if (cl-search "Open" (buffer-name bbl))
+;; 	(progn
+;; 	  (switch-to-buffer "*Buffer List*")
+;; 	  (setq s-test (buffer-substring-no-properties (point-min) (point-max)))
+;; 	  (message (split-string s-test "\n"))
+;; 	  ;; (move-to-window-line 2)
+;; 	  ;; (Buffer-menu-mark)
+;; 	  )
+;;       )))
 
 (provide 'buffer-list-sql)
 ;;; buffer-list-sql.el ends here
