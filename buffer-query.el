@@ -87,6 +87,11 @@
     (dolist (bz (buffer-list))
       (push (buffer-name bz) buffer-names))
     (put 'BQBuffers 'names buffer-names))
+  ;; get buffer names and save them
+  (let (bz buffer-names)
+    (dolist (bz (buffer-list))
+      (push (buffer-name bz) buffer-names))
+    (put 'BQBuffers 'names buffer-names))
   ;; get buffer filenames and save them
   (let (bz buffer-filenames)
     (dolist (bz (buffer-list))
@@ -125,6 +130,10 @@
 	      ((cl-search (nth 0 split-query) "open") (bq-open)))
       (message "sorry, not a valid statement..."))))
 
+(defun check-marked-buffer (buffer)
+  (message "yes")
+  )
+
 (defun bq-mark ()
 "Allways assuming buffers table right now Q-LIST."
 (message "marking"))
@@ -133,13 +142,24 @@
 "Allways assuming buffers table right now Q-LIST."
 ;; (let (split-q)
 ;;   (setq split-q (string-split (get 'BQQuery 'query))))
-(let (selectors)
-  (if (get 'BQQuery 'columns)
-      (setq selectors (get 'BQQuery 'columns))
-  (setq selectors buffer-columns))
+(let (selectors buff sel (res '()) (buffer-res '()))
+  (cond
+   ((not (get 'BQQuery 'columns)) (setq selectors (get 'BQQuery 'columns)))
+   ((cl-search "*" (get 'BQQuery 'query)) (setq selectors buffer-columns)))
+  (message "%s" selectors)
+  (dolist (buff (buffer-list))
+    (setq buffer-res '())
+    (dolist (sel selectors)
+      (cond
+       ((string= "crm" sel) (push buffer-res (check-marked-buffer buff)))
+       ((string= "name" sel) (push buffer-res (buffer-name buff)))
+       ((string= "size" sel) (push buffer-res (buffer-size buff)))
+       ;; ((member "mode" sel) (push buffer-res (buffer-mo buff)))
+       ((string= "file" sel) (push buffer-res (buffer-file-name buff)))))
+    (push res buffer-res)
+    (message "%s" buffer-res))
+  (message "%s" res)))
   ;; loop through and save selections from available buffers, then display to user
-  )
-)
 
 ;; (let (q-column res q-conditionals)
 ;;   (cond
