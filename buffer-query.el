@@ -40,7 +40,6 @@
 	(setq BQ-DBconnection (sqlite-init BQ-SQLfile))))))
 
 
-
 ;; SAVE AND LOAD
 (defun bq--save()
   "Save BQBuffers data to bq-data file."
@@ -108,7 +107,7 @@
   (setq BQQuery nil)
   (bq--get-buffer-data)
   ;; (bq--save) ;; TODO do we need to save and load?
-  (let (input split-query xyz (iter 0) columns)
+  (let (input split-query xyz (iter 0) columns conditions)
     (setq input (read-string "command:" nil nil nil))
     (setq split-query (split-string input " "))
     (put 'BQQuery 'query input)
@@ -117,9 +116,10 @@
       ;; (setq iter (+ iter 1))
       (cond
        ((member xyz bq-tables) (put 'BQQuery 'table xyz))
-       ((member xyz bq-conditionals) (put 'BQQuery 'condition xyz))
+       ((member xyz bq-conditionals) (push xyz conditions))
        ((member xyz buffer-columns) (push xyz columns)) ;; this one is only here because we only have one 'table'
        ))
+    (put 'BQQuery 'condition conditions)
     (put 'BQQuery 'columns columns)
     (if (member (nth 0 split-query) bq-actions)
 	(cond ((cl-search (nth 0 split-query) "select") (bq-select))
@@ -139,11 +139,10 @@
 
 (defun bq-select ()
 "Allways assuming buffers table right now Q-LIST."
-;; (let (split-q)
-;;   (setq split-q (string-split (get 'BQQuery 'query))))
-;; (message (symbol-plist 'BQQuery))
 (let (selectors buff sel (res '()) (buffer-res '()))
-  (cond
+  (if (member (get 'BQQuery 'condition) bq-conditionals)
+      ((message "do where logic here")))
+  (cond ;; find columns we are selecting
    ((get 'BQQuery 'columns) (setq selectors (get 'BQQuery 'columns)))
    ((cl-search "*" (get 'BQQuery 'query)) (setq selectors buffer-columns)))
   (dolist (buff (buffer-list))
