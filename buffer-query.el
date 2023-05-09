@@ -3,7 +3,7 @@
 
 (defvar bq-tables '("buffers"))
 (defvar bq-actions '("select" "mark" "kill" "open" "copy" "save" "delete"))
-(defvar bq-conditionals '("where" "if" "and" "not" "like"))
+(defvar bq-conditionals '("=" "!=" "and" "not" "like"))
 (defvar buffer-columns '("crm" "name" "size" "mode" "file"))
 (defvar BQBuffers "")
 (defvar BQQuery "")
@@ -62,8 +62,6 @@
 (defun bqsql--load()
   "Test.")
 
-
-
 (defun bq--get-buffer-data ()
   "Inital Call to get Buffers metadata and store in symbol BQBuffers."
   (let (bq-start-buffer)
@@ -85,11 +83,6 @@
     (dolist (bz (buffer-list))
       (push (buffer-name bz) buffer-names))
     (put 'BQBuffers 'names buffer-names))
-  ;; get buffer names and save them
-  (let (bz buffer-names)
-    (dolist (bz (buffer-list))
-      (push (buffer-name bz) buffer-names))
-    (put 'BQBuffers 'names buffer-names))
   ;; get buffer filenames and save them
   (let (bz buffer-filenames)
     (dolist (bz (buffer-list))
@@ -103,8 +96,10 @@
 
 
 (defun bq-query()
+  "User exposed function for querying to buffers."
   (interactive)
   (setq BQQuery nil)
+  (put 'BQQuery 'where nil)
   (bq--get-buffer-data)
   ;; (bq--save) ;; TODO do we need to save and load?
   (let (input split-query xyz (iter 0) columns conditions)
@@ -116,6 +111,7 @@
       ;; (setq iter (+ iter 1))
       (cond
        ((member xyz bq-tables) (put 'BQQuery 'table xyz))
+       ((string= xyz "where") (put 'BQQuery 'where xyz))
        ((member xyz bq-conditionals) (push xyz conditions))
        ((member xyz buffer-columns) (push xyz columns)) ;; this one is only here because we only have one 'table'
        ))
@@ -129,35 +125,66 @@
 	      ((cl-search (nth 0 split-query) "open") (bq-open)))
       (message "sorry, not a valid statement..."))))
 
-(defun check-marked-buffer (buffer)
-  (string "yes")
-  )
+(defun check-marked-buffer (buffer) "Check if BUFFER marked." (string "yes"))
 
-(defun bq-mark ()
-"Allways assuming buffers table right now Q-LIST."
-(message "marking"))
+(defun bq-mark () "Marking." (message "marking"))
+
 
 (defun bq-select ()
-"Allways assuming buffers table right now Q-LIST."
-(let (selectors buff sel (res '()) (buffer-res '()))
-  (if (member (get 'BQQuery 'condition) bq-conditionals)
-      ((message "do where logic here")))
-  (cond ;; find columns we are selecting
-   ((get 'BQQuery 'columns) (setq selectors (get 'BQQuery 'columns)))
-   ((cl-search "*" (get 'BQQuery 'query)) (setq selectors buffer-columns)))
-  (dolist (buff (buffer-list))
-    (setq buffer-res '())
-    (dolist (sel selectors)
-      (cond
-       ((string= "crm" sel)  (push "yes" buffer-res))
-       ((string= "name" sel) (push (buffer-name buff) buffer-res))
-       ((string= "size" sel) (push (buffer-size buff) buffer-res))
-       ((string= "mode" sel) (push (buffer-local-value 'major-mode (get-buffer buff)) buffer-res))
-       ((string= "file" sel) (push (buffer-file-name buff) buffer-res))))
-    (push buffer-res res))
-  (message "res: %s" res)))
+  "Select function for bq-query."
+  ;; (message (symbol-plist 'BQQuery)) ;; debugging
+  (setq BQStatements '())
+  (let (selectors buff sel (res '()) (buffer-res '()) cond-set ww current-statement stmt)
+    (cond ;; find columns we are selecting
+     ((get 'BQQuery 'columns) (setq selectors (get 'BQQuery 'columns)))
+     ((cl-search "*" (get 'BQQuery 'query)) (setq selectors buffer-columns)))
+    (if (get 'BQQuery 'where) ;; if where conditional
+	(progn
+	  (setq cond-set nil) ;; default for testing
+	  (dolist (ww (split-string (nth 1 (split-string (get 'BQQuery 'query) "where ")) " "))
+	    (message "looping: %s" ww)
+	    (cond
+	     ((member ww bq-conditionals) (put 'current-statement 'cond ww))
+	     ((member ww buffer-columns) (put 'current-statement 'col ww))
+	     (t (put 'current-statement 'match ww)))
+	    (push 'current-statement BQStatements)))
+	  
+	  ;; loop through split string after "where".
+	  ;; if that word in conditionals, it goes in the newvar (STATEMENTS[iter].conditional)
+	  ;; if that word in columns, it goes in the newvar (STATEMENTS[iter].column)
+	  ;; else , it goes in the newvar (STATEMENTS[iter].match)
+	  
+	  ;; now we loop though statements, and run ((intern conditional) column match)
+	  ;; if that matches, then cond-set will be t and it will push value to res,
+	  ;; else cond-set will be nil and values will not be added to res
+      (setq cond-set t))
+    (message "test: %s" BQStatements)
+    (dolist (stmt BQStatements)
+      ;; (funcall (intern (concat "bq-" (symbol-name (get stmt 'cond)))) (symbol-name (get stmt 'col)) (symbol-name (get stmt 'match))))
+    
+    (dolist (buff (buffer-list))
+      (setq buffer-res '())
+      (dolist (sel selectors)
+	(cond
+	 ((and (string= "crm" sel) cond-set)  (push "yes" buffer-res))
+	 ((and (string= "name" sel) cond-set) (push (buffer-name buff) buffer-res))
+	 ((and (string= "size" sel) cond-set) (push (buffer-size buff) buffer-res))
+	 ((and (string= "mode" sel) cond-set) (push (buffer-local-value 'major-mode (get-buffer buff)) buffer-res))
+	 ((and (string= "file" sel) cond-set) (push (buffer-file-name buff) buffer-res))
+	 (t "na")))
+      (if (length> buffer-res 0) (push buffer-res res)))
+    (message "res: %s" res)))
 
-  ;; loop through and save selections from available buffers, then display to user
+(defun bq-= (column match)
+  (message "%s %s" column match))
+
+(defun testz (argz)
+  "Test func to show how to call funcs from strings."
+  (message "string %s" argz))
+(funcall (intern "testz") "world")
+
+
+;; loop through and save selections from available buffers, then display to user
 
 ;; (let (q-column res q-conditionals)
 ;;   (cond
@@ -166,11 +193,6 @@
 ;;    )
 ;;    (dolist (bqr ))
 ;;   ))
-
-(defun bb-do-action (action query-list)
-  "based off an action do "
-  (message action query-list)
-  )
 
 
 ;; (let (ztest
@@ -193,17 +215,6 @@
 ;;   )
 
 
-
-"select * from buffers where .py in name" ;;will show message of buffer data
-""
-"mark * from buffers"
-"kill * from buffers where name is not *scratch*"
-"kill * from buffers where name is not like term"
-"kill * from buffers where name like Open-projects"
-"save buffers where name is main.py"
-"open buffer where name main.py" ;; open will open first result
-
-
 ;; (let (bbl s-test)
 ;;   (dolist (bbl (buffer-list))
 ;;     (if (cl-search "Open" (buffer-name bbl))
@@ -215,6 +226,19 @@
 ;; 	  ;; (Buffer-menu-mark)
 ;; 	  )
 ;;       )))
+
+
+;;test cases
+"select * from buffers where .py in name" ;;will show message of buffer data
+""
+"mark * from buffers"
+"kill * from buffers where name is not *scratch*"
+"kill * from buffers where name is not like term"
+"kill * from buffers where name like Open-projects"
+"save buffers where name is main.py"
+"open buffer where name main.py" ;; open will open first result
+
+
 
 (provide 'buffer-list-sql)
 ;;; buffer-list-sql.el ends here
