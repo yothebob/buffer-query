@@ -12,11 +12,6 @@
 (defvar BQ-SQLfile "~/.emacs.d/buffer-query/bqbuffers.db")
 (defvar BQ-Metadata-file "~/.emacs.d/buffer-query/bq-data.el")
 
-;; .... i mean i was thinking about writing my own sql parsing tool...
-;; but hell.. I mean i could just use a sql lite file and actually use sql?
-;; I think if I do both (as a pickable option) that would be cool. Because there is alot of churn in buffers.
-;; I think maybe some people would just want it to run without the sqlite dependancies
-
 ;; FIRST TIME SETUPS
 (defun bq--initial-setup()
   "Initial setup, seeing if you need sqlite3 installed, if you want to use sqlite or nosql."
@@ -78,21 +73,7 @@
 	    (if (cl-search (substring bz 0 1) ">")
 		(put 'BQBuffers 'marks iter)
 	      (message "na")))))))
-  ;; get buffer names and save them ;; dont know if I need this
-  ;; (let (bz buffer-names)
-  ;;   (dolist (bz (buffer-list))
-  ;;     (push (buffer-name bz) buffer-names))
-  ;;   (put 'BQBuffers 'names buffer-names))
-  ;; get buffer filenames and save them ;; dont know if I need this
-  ;; (let (bz buffer-filenames)
-  ;;   (dolist (bz (buffer-list))
-  ;;     (push (buffer-file-name bz) buffer-filenames))
-  ;;   (put 'BQBuffers 'filenames buffer-filenames))
-  ;; get buffer sizes and save them ;; dont know if I need this
-  ;; (let (bz buffer-sizes)
-  ;;   (dolist (bz (buffer-list))
-  ;;     (push (buffer-size bz) buffer-sizes))
-  ;;   (put 'BQBuffers 'sizes buffer-sizes)))
+ 
 
 
 (defun bq-query()
@@ -265,18 +246,17 @@
 ;;   )
 
 
-;; (let (bbl s-test)
-;;   (dolist (bbl (buffer-list))
-;;     (if (cl-search "Open" (buffer-name bbl))
-;; 	(progn
-;; 	  (switch-to-buffer "*Buffer List*")
-;; 	  (setq s-test (buffer-substring-no-properties (point-min) (point-max)))
-;; 	  (message (split-string s-test "\n"))
-;; 	  ;; (move-to-window-line 2)
-;; 	  ;; (Buffer-menu-mark)
-;; 	  )
-;;       )))
-
+(let (bbl s-test)
+  (dolist (bbl (buffer-list))
+    (if (cl-search "Open" (buffer-name bbl))
+	(progn
+	  (switch-to-buffer "*Buffer List*")
+	  (setq s-test (buffer-substring-no-properties (point-min) (point-max)))
+	  (message (split-string s-test "\n"))
+	  (move-to-window-line 2)
+	  ;; (Buffer-menu-mark)
+	  )
+      )))
 
  ;; (let (s-test (iter 0) buffer-list-line (buffer (get-buffer "project_ltg.php")))
  ;;    (progn
