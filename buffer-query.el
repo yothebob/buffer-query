@@ -3,7 +3,7 @@
 
 (defvar bq-tables '("buffers"))
 (defvar bq-actions '("select" "mark" "kill" "open" "copy" "save" "delete"))
-(defvar bq-conditionals '("=" "!=" "and" "not" "like"))
+(defvar bq-conditionals '("=" "!=" "and" "not" "in" "like"))
 (defvar buffer-columns '("crm" "name" "size" "mode" "file"))
 (defvar BQBuffers "")
 (defvar BQQuery "")
@@ -77,22 +77,22 @@
 	(if (> (length bz) 0)
 	    (if (cl-search (substring bz 0 1) ">")
 		(put 'BQBuffers 'marks iter)
-	      (message "na"))))))
-  ;; get buffer names and save them
-  (let (bz buffer-names)
-    (dolist (bz (buffer-list))
-      (push (buffer-name bz) buffer-names))
-    (put 'BQBuffers 'names buffer-names))
-  ;; get buffer filenames and save them
-  (let (bz buffer-filenames)
-    (dolist (bz (buffer-list))
-      (push (buffer-file-name bz) buffer-filenames))
-    (put 'BQBuffers 'filenames buffer-filenames))
-  ;; get buffer sizes and save them
-  (let (bz buffer-sizes)
-    (dolist (bz (buffer-list))
-      (push (buffer-size bz) buffer-sizes))
-    (put 'BQBuffers 'sizes buffer-sizes)))
+	      (message "na")))))))
+  ;; get buffer names and save them ;; dont know if I need this
+  ;; (let (bz buffer-names)
+  ;;   (dolist (bz (buffer-list))
+  ;;     (push (buffer-name bz) buffer-names))
+  ;;   (put 'BQBuffers 'names buffer-names))
+  ;; get buffer filenames and save them ;; dont know if I need this
+  ;; (let (bz buffer-filenames)
+  ;;   (dolist (bz (buffer-list))
+  ;;     (push (buffer-file-name bz) buffer-filenames))
+  ;;   (put 'BQBuffers 'filenames buffer-filenames))
+  ;; get buffer sizes and save them ;; dont know if I need this
+  ;; (let (bz buffer-sizes)
+  ;;   (dolist (bz (buffer-list))
+  ;;     (push (buffer-size bz) buffer-sizes))
+  ;;   (put 'BQBuffers 'sizes buffer-sizes)))
 
 
 (defun bq-query()
@@ -127,73 +127,123 @@
 
 (defun check-marked-buffer (buffer) "Check if BUFFER marked." (string "yes"))
 
-(defun bq-mark () "Marking." (message "marking"))
 
+(defun bq-mark-buffer (buffer)
+  "Mark BUFFER."
+  (let (s-test (iter 0) buffer-list-line)
+    (progn
+      (switch-to-buffer "*Buffer List*")
+      (setq s-test (buffer-substring-no-properties (point-min) (point-max)))
+      (dolist (buffer-list-line (split-string s-test "\n"))
+	(if (and (cl-search (buffer-name buffer) buffer-list-line) (cl-search (number-to-string (buffer-size buffer)) buffer-list-line))
+	    (progn (move-to-window-line iter) (Buffer-menu-mark)))
+	(setq iter (+ iter 1))))))
 
-(defun bq-select ()
-  "Select function for bq-query."
-  ;; (message (symbol-plist 'BQQuery)) ;; debugging
+(defun bq-mark ()
+  "Marking."
+  (message "marking")
   (setq BQStatements '())
-  (let (selectors buff sel (res '()) (buffer-res '()) cond-set ww current-statement stmt)
-    (cond ;; find columns we are selecting
-     ((get 'BQQuery 'columns) (setq selectors (get 'BQQuery 'columns)))
-     ((cl-search "*" (get 'BQQuery 'query)) (setq selectors buffer-columns)))
+  (let (cond-set ww buff (buffer-res '()) conds current-statement stmt)
     (if (get 'BQQuery 'where) ;; if where conditional
 	(progn
-	  (setq cond-set nil) ;; default for testing
+	  (setq cond-set nil)
 	  (dolist (ww (split-string (nth 1 (split-string (get 'BQQuery 'query) "where ")) " "))
-	    (message "looping: %s" ww)
+	    (message ww)
 	    (cond
 	     ((member ww bq-conditionals) (put 'current-statement 'cond ww))
 	     ((member ww buffer-columns) (put 'current-statement 'col ww))
 	     (t (put 'current-statement 'match ww)))
 	    (push 'current-statement BQStatements)))
-	  
-	  ;; loop through split string after "where".
-	  ;; if that word in conditionals, it goes in the newvar (STATEMENTS[iter].conditional)
-	  ;; if that word in columns, it goes in the newvar (STATEMENTS[iter].column)
-	  ;; else , it goes in the newvar (STATEMENTS[iter].match)
-	  
-	  ;; now we loop though statements, and run ((intern conditional) column match)
-	  ;; if that matches, then cond-set will be t and it will push value to res,
-	  ;; else cond-set will be nil and values will not be added to res
       (setq cond-set t))
-    (message "test: %s" BQStatements)
-    (dolist (stmt BQStatements)
-      ;; (funcall (intern (concat "bq-" (symbol-name (get stmt 'cond)))) (symbol-name (get stmt 'col)) (symbol-name (get stmt 'match))))
-    
     (dolist (buff (buffer-list))
+      (setq conds '())
       (setq buffer-res '())
+      (dolist (stmt BQStatements)
+	(push (funcall (intern (concat "bq-" (get stmt 'cond))) (get stmt 'col) (get stmt 'match) buff) conds))
+      (if (member nil conds)
+	  (setq cond-set nil)
+	(setq cond-set t))
+      (cond
+       ((equal cond-set t) (bq-mark-buffer buff))))))
+
+(defun bq-select ()
+  "Select function for bq-query."
+  (setq BQStatements '())
+  (let (selectors buff sel (res '()) (buffer-res '()) (conds '()) cond-set ww current-statement stmt)
+    (cond ;; find columns we are selecting
+     ((get 'BQQuery 'columns) (setq selectors (get 'BQQuery 'columns)))
+     ((cl-search "*" (get 'BQQuery 'query)) (setq selectors buffer-columns)))
+    (if (get 'BQQuery 'where) ;; if where conditional
+	(progn
+	  (setq cond-set nil)
+	  (dolist (ww (split-string (nth 1 (split-string (get 'BQQuery 'query) "where ")) " "))
+	    (cond
+	     ((member ww bq-conditionals) (put 'current-statement 'cond ww))
+	     ((member ww buffer-columns) (put 'current-statement 'col ww))
+	     (t (put 'current-statement 'match ww)))
+	    (push 'current-statement BQStatements)))
+      (setq cond-set t))
+    (dolist (buff (buffer-list))
+      (setq conds '())
+      (setq buffer-res '())
+      (dolist (stmt BQStatements)
+	(push (funcall (intern (concat "bq-" (get stmt 'cond))) (get stmt 'col) (get stmt 'match) buff) conds))
+      (if (member nil conds)
+	  (setq cond-set nil)
+	(setq cond-set t))
       (dolist (sel selectors)
 	(cond
 	 ((and (string= "crm" sel) cond-set)  (push "yes" buffer-res))
 	 ((and (string= "name" sel) cond-set) (push (buffer-name buff) buffer-res))
 	 ((and (string= "size" sel) cond-set) (push (buffer-size buff) buffer-res))
 	 ((and (string= "mode" sel) cond-set) (push (buffer-local-value 'major-mode (get-buffer buff)) buffer-res))
-	 ((and (string= "file" sel) cond-set) (push (buffer-file-name buff) buffer-res))
+	 ((and (string= "file" sel) cond-set) (if (not (equal (buffer-file-name buff) nil)) (push (buffer-file-name buff) buffer-res)))
 	 (t "na")))
       (if (length> buffer-res 0) (push buffer-res res)))
     (message "res: %s" res)))
 
-(defun bq-= (column match)
-  (message "%s %s" column match))
+(defun bq-= (column match buffer)
+  "Test if MATCH string and COLUMN value from BUFFER are equal."
+  (let (column-value)
+    ;; I need to put this function in the buffer loop
+    (cond ;;"crm" "name" "size" "mode" "file"
+     ((string= column "name") (setq column-value (string= match (buffer-name buffer))))
+     ((string= column "size") (setq column-value (= match (buffer-size buffer))))
+     ((string= column "mode") (setq column-value (buffer-local-value 'major-mode (get-buffer buff))))
+     ((string= column "size") (setq column-value (string= (buffer-file-name buffer))))
+     (t (setq column-value nil)))
+    (catch 'return
+    (when t
+      (throw 'return column-value)))))
 
-(defun testz (argz)
-  "Test func to show how to call funcs from strings."
-  (message "string %s" argz))
-(funcall (intern "testz") "world")
+(defun bq-!= (column match buffer)
+  "Test if MATCH string and COLUMN value from BUFFER are not equal."
+  (let (column-value)
+    ;; I need to put this function in the buffer loop
+    (cond ;;"crm" "name" "size" "mode" "file"
+     ((string= column "name") (setq column-value (not (string= match (buffer-name buffer)))))
+     ((string= column "size") (setq column-value (not (= match (buffer-size buffer)))))
+     ((string= column "mode") (setq column-value (not (buffer-local-value 'major-mode (get-buffer buff)))))
+     ((string= column "size") (setq column-value (not (string= (buffer-file-name buffer)))))
+     (t (setq column-value nil)))
+    (catch 'return
+    (when t
+      (throw 'return column-value)))))
 
 
-;; loop through and save selections from available buffers, then display to user
-
-;; (let (q-column res q-conditionals)
-;;   (cond
-;;    ((member (nth 1 q-list) buffer-columns) (setq q-column '((nth 1 q-list))))
-;;    ((string= (nth 1 q-list) "*") (setq q-column buffer-columns))
-;;    )
-;;    (dolist (bqr ))
-;;   ))
-
+(defun bq-in (column match buffer)
+  "Test if MATCH string and COLUMN value from BUFFER are equal."
+  (let (column-value)
+    ;; I need to put this function in the buffer loop
+    (cond ;;"crm" "name" "size" "mode" "file"
+     ((string= column "name") (setq column-value (not (equal (cl-search match (buffer-name buffer)) nil))))
+     ((string= column "size") (setq column-value (not (equal (cl-search match (number-to-string (buffer-size buffer))) nil))))
+     ((string= column "mode") (setq column-value (buffer-local-value 'major-mode (get-buffer buff)))) ;; TODO fix
+     ((string= column "size") (setq column-value (not (equal (cl-search match (buffer-file-name buffer)) nil))))
+     (t (setq column-value nil)))
+    (catch 'return
+    (when t
+      (throw 'return column-value)))))
 
 ;; (let (ztest
 ;;       col
@@ -228,9 +278,23 @@
 ;;       )))
 
 
+ ;; (let (s-test (iter 0) buffer-list-line (buffer (get-buffer "project_ltg.php")))
+ ;;    (progn
+ ;;      (switch-to-buffer "*Buffer List*")
+ ;;      (setq s-test (buffer-substring-no-properties (point-min) (point-max)))
+ ;;      (dolist (buffer-list-line (split-string s-test "\n"))
+ ;; 	(if (and (cl-search (buffer-name buffer) buffer-list-line) (cl-search (number-to-string (buffer-size buffer)) buffer-list-line))
+ ;; 	    (progn (move-to-window-line iter) (Buffer-menu-mark)))
+ ;; 	(setq iter (+ iter 1)))))
+
+;; (bq-in "name" ".php" (get-buffer "project_ltg.php"))
+
+
+
 ;;test cases
-"select * from buffers where .py in name" ;;will show message of buffer data
-""
+"select * from buffers where .py in name"
+"select * from buffers where name = *scratch*"
+"select * from buffers where name != *scratch*"
 "mark * from buffers"
 "kill * from buffers where name is not *scratch*"
 "kill * from buffers where name is not like term"
@@ -240,5 +304,5 @@
 
 
 
-(provide 'buffer-list-sql)
-;;; buffer-list-sql.el ends here
+(provide 'buffer-query)
+;;; buffer-query.el ends here
