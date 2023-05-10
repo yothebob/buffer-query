@@ -246,17 +246,17 @@
 ;;   )
 
 
-(let (bbl s-test)
-  (dolist (bbl (buffer-list))
-    (if (cl-search "Open" (buffer-name bbl))
-	(progn
-	  (switch-to-buffer "*Buffer List*")
-	  (setq s-test (buffer-substring-no-properties (point-min) (point-max)))
-	  (message (split-string s-test "\n"))
-	  (move-to-window-line 2)
-	  ;; (Buffer-menu-mark)
-	  )
-      )))
+;; (let (bbl s-test)
+;;   (dolist (bbl (buffer-list))
+;;     (if (cl-search "Open" (buffer-name bbl))
+;; 	(progn
+;; 	  (switch-to-buffer "*Buffer List*")
+;; 	  (setq s-test (buffer-substring-no-properties (point-min) (point-max)))
+;; 	  (message (split-string s-test "\n"))
+;; 	  (move-to-window-line 2)
+;; 	  ;; (Buffer-menu-mark)
+;; 	  )
+;;       )))
 
  ;; (let (s-test (iter 0) buffer-list-line (buffer (get-buffer "project_ltg.php")))
  ;;    (progn
