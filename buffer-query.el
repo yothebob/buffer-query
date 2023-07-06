@@ -79,7 +79,7 @@
   (let (s-test (iter 0) buffer-list-line)
       (cond
        ((string-equal action "kill") (kill-buffer buffer))
-       ((string-equal action "open") (open-buffer buffer))
+       ((string-equal action "open") (switch-to-buffer buffer))
       (t (progn
       (switch-to-buffer "*Buffer List*")
       (setq s-test (buffer-substring-no-properties (point-min) (point-max)))

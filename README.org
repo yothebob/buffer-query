@@ -1,0 +1,69 @@
+#+TITLE: Buffer Query
+
+Interact with your buffers in a SQL like fashion! 
+
+#+NAME: In Action
+.gif here
+
+
+** Get Started
+If you download this from github, you can put this folder in your ~/.emacs.d.
+
+#+begin_src bash
+  cd ~/.emacs.d
+  git clone https://github.com/yothebob/buffer-query.git
+#+end_src
+
+NOTE: no capitalizing, that will not work (I know.. need to fix. Check the todo list at the bottom.)
+
+#+begin_src elisp
+  (add-to-list 'load-path (expand-file-name "~/.emacs.d/buffer-query"))
+  (require 'buffer-query)
+  (global-set-key (kbd "C-c b q") 'bq-query)
+#+end_src
+
+** Case Scenarios
+Working on a project that you want to close all those related buffers. You can pick out a name from the file path that is unique.
+#+begin_src elisp
+C-c b q "kill where projectname in file"
+#+end_src
+
+
+** Params
+*** Actions
+| Command  | Description                                                   |
+|----------+---------------------------------------------------------------|
+| "select" | display options found in *Messages*                           |
+| "mark"   | Switch to *Buffer List* with found buffers marked             |
+| "kill"   | Kill selected buffers                                         |
+| "open"   | Switch to first buffer found in query                         |
+| "save"   | Save selected buffers                                         |
+| "delete" | Switch to *Buffer List* with found buffers marked for killing |
+
+*** Columns
+These are the direct fields in your *Buffer List* page, take a look at that if more info is needed.
+
+| Command | Description                                      |
+|---------+--------------------------------------------------|
+| "name"  | File Name/Buffer Name                            |
+| "size"  | Size of File/Buffer                              |
+| "mode"  | Current Buffer Mode                              |
+| "file"  | Full File Path. Note reads file dired from magit |
+
+*** Where Conditionals
+
+| Command  | Description   |
+|----------+---------------|
+| "="      | Is equal to   |
+| "!="     | Not equal to  |
+| "not in" | x is not in y |
+| "in"     | x is in y     |
+
+*** Tables
+NOTE: Not needed in command because this is the only 'table' supported ATM.
+
+| Command   |
+|-----------|
+| "buffers" |
+
+
