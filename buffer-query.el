@@ -1,18 +1,95 @@
+;;; buffer-query.el --- A library for managing buffers in a sql like fashion  -*- lexical-binding: t; -*-
+
+;; Copyright (C) 2023  Brandon Brodrick
+
+;; Author: Brandon Brodrick <bbrodrick@parthenonsoftware.com>
+;; Keywords: abbrev, matching, tools, files
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;;; Commentary:
+
+;; (bq-select (bq-parse-where "select name from buffer"))
+;; (bq-select (bq-parse-where "select name from buffer where .el in file"))
+;; (apply (intern "select") (list (bq-parse-where "select name from buffer where .el in file")))
+
 ;;; Code:
-(require 'sqlite)
+(defvar *buffer-query-list* (list))
+(defvar bq-conditionals (list "=" "!=" "not in" "in" "like" "not like"))
+(defvar buffer-columns (list "crm" "name" "size" "mode" "file"))
+(defvar query-history (list ""))
 
-(defvar bq-tables '("buffers"))
-(defvar bq-actions '("select" "mark" "kill" "open" "save" "delete"))
-(defvar bq-conditionals '("=" "!=" "and" "not" "in" "like"))
-(defvar buffer-columns '("crm" "name" "size" "mode" "file"))
-(defvar BQBuffers "")
-(defvar BQQuery "")
-(defvar BQSetup nil)
-(defvar BQ-DBconnection "")
-(defvar BQ-SQLfile "~/.emacs.d/buffer-query/bqbuffers.db")
-(defvar BQ-Metadata-file "~/.emacs.d/buffer-query/bq-data.el")
+;;;; HELPER FUNCTIONS 
 
-(put 'BQQuery 'query-history '())
+(defun string-in(value col-value)
+  "Check if VALUE inside COL-VALUE returning t or nil."
+  (catch 'return
+    (when t
+      (throw 'return (not (equal (cl-search value col-value) nil))))))
+
+(defun get-list-remainder (from-list &rest haves)
+  "From a FROM-LIST Look at all the HAVES, return the value you do not have."
+  (let (unsaved (list))
+  (dolist (fl from-list)
+      (cond ((equal (member fl haves) nil) (push fl unsaved))))
+    (catch 'return
+    (when t
+      (throw 'return unsaved)))))
+
+(defun set-file-attr (buffer)
+  "Handle setting file attr for BUFFER, extra logic needed magit and dired mode."
+  (let (file-res)
+    (cond
+     ((cl-search "dired" (symbol-name (buffer-local-value 'major-mode (get-buffer buffer))))
+      (with-current-buffer buffer (setq file-res default-directory)))
+     ((cl-search "magit" (symbol-name (buffer-local-value 'major-mode (get-buffer buffer))))
+      (with-current-buffer buffer (setq file-res default-directory)))
+     ((not (equal (buffer-file-name buffer) nil)) (setq file-res (buffer-file-name buffer))))
+    (catch 'return
+	(when t
+	  (throw 'return file-res)))))
+  
+(defun bq-add-to-buffer-list (buffer)
+  "Add BUFFER metadata to plist."
+  (push
+   (list
+    'name (buffer-name buffer)
+    'size (buffer-size buffer)
+    'file (set-file-attr buffer)
+    'mode (downcase (format "%s" (buffer-local-value 'major-mode (get-buffer buffer))))
+    'crm "TODO") *buffer-query-list*))
+
+(defun clear-buffer-list ()
+  "Tiny wrapper to clear buffer-list."
+  (setq *buffer-query-list* (list)))
+
+(defun bq-do-action-buffer (buffer action)
+  "Do ACTION to BUFFER."
+  (let (s-test (iter 0) buffer-list-line)
+      (cond
+       ((string-equal action "kill") (kill-buffer buffer))
+       ((string-equal action "open") (open-buffer buffer))
+      (t (progn
+      (switch-to-buffer "*Buffer List*")
+      (setq s-test (buffer-substring-no-properties (point-min) (point-max)))
+      (dolist (buffer-list-line (split-string s-test "\n"))
+	(if (and (cl-search (buffer-name buffer) buffer-list-line) (cl-search (number-to-string (buffer-size buffer)) buffer-list-line))
+	    (progn (move-to-window-line iter)
+		   (cond
+		    ((string-equal action "delete") (Buffer-menu-delete))
+		    ((string-equal action "mark") (Buffer-menu-mark)))))
+	(setq iter (+ iter 1))))))))
 
 (defun bq--get-buffer-data ()
   "Inital Call to get Buffers metadata and store in symbol BQBuffers."
@@ -33,304 +110,82 @@
 	   (switch-to-buffer bq-start-buffer))))
       (progn (buffer-menu)
 	     (switch-to-buffer bq-start-buffer)))))
- 
-(defun bq-query()
-  "User exposed function for querying to buffers."
+
+
+
+;;;; ACTION FUNCTIONS 
+
+(defun bq-select (fn-list)
+  "Print all buffers that match FN-LIST parameters."
+  (let (res)
+    (setq res (apply (intern "bq-get-by-cond") fn-list))
+  (message "%s" res)))
+
+;; TODO: these can all probably be condensed to a func
+(defun bq-action (fn-list action)
+  "Call ACTION on buffers that match FN-LIST parameters."
+  (let (res)
+    (setq res (apply (intern "bq-get-by-cond") fn-list))
+    (dolist (buff res)
+      (bq-do-action-buffer (get-buffer (plist-get buff 'name)) action))))
+
+
+
+;;;; LOGIC FUNCTIONS 
+
+(defun bq-get-by-cond (&optional value q-cond &key col)
+  "Given a VALUE and a COL and Q-COND, return a list of buffers that have conditions that match the value."
+  (if (equal q-cond nil)
+      (setq q-cond "string-equal"))
+  (if (equal col nil)
+      (setq col ""))
+  (cl-remove-if-not #'(lambda (x) (apply (intern q-cond) (list value (plist-get x (intern col))))) *buffer-query-list*))
+
+(defun bq-parse-where (command-string)
+  "Parse COMMAND-STRING into a arg list for action-word function."
+  (if (not (cl-search "where" command-string))
+      (catch 'return
+    (when t
+      (throw 'return ())))
+    (let (post-where (parsed-col nil) (parsed-cond nil) (parsed-val nil))
+    (progn
+      (setq post-where (nth 1 (split-string command-string "where")))
+      (if (cl-search "and" post-where) ;; if and in where, try to split on ands
+	  (setq post-where (split-string post-where "and"))
+	(setq post-where (list post-where)))
+      (dolist (pw post-where)
+	(dolist (pw-word (split-string pw " "))
+	  (if (member pw-word buffer-columns) (setq parsed-col pw-word))
+	  (if (member pw-word bq-conditionals) (setq parsed-cond pw-word))
+	  (if (string-equal pw-word "not") (string-join parsed-cond "not")))
+      (cond
+       ((> (length (get-list-remainder (split-string pw " ") parsed-col parsed-cond)) 0)
+	(setq parsed-val (nth 0 (get-list-remainder (split-string pw " ") parsed-col parsed-cond)))))
+      (message (format "%s %s %s" parsed-col parsed-cond parsed-val)))
+      (cond
+       ((string-equal parsed-cond "=") (setq parsed-cond "string-equal"));; todo finish adding conditionals
+       ((string-equal parsed-cond "in") (setq parsed-cond "string-in")))
+      (catch 'return
+    (when t
+      (throw 'return (list parsed-val parsed-cond :col parsed-col))))))))
+
+;;;; USER FUNCTIONS 
+
+(defun buffer-query ()
+  "User function to query buffers based off data."
   (interactive)
-  (setq BQQuery nil)
-  (put 'BQQuery 'where nil)
+  (clear-buffer-list)
   (bq--get-buffer-data)
-  (let (input split-query xyz (iter 0) columns conditions)
-    (setq input (read-string "command:" nil (get 'BQQuery 'query-history) nil))
-    (setq split-query (split-string input " "))
-    (put 'BQQuery 'query input)
-    (push input (get 'BQQuery 'query-history))
-    (dolist (xyz split-query)
-      (cond
-       ((member xyz bq-tables) (put 'BQQuery 'table xyz))
-       ((string= xyz "where") (put 'BQQuery 'where xyz))
-       ((member xyz bq-conditionals) (push xyz conditions))
-       ((member xyz buffer-columns) (push xyz columns)) ;; TODO if you do select name where name = x, it will select name twice;; this one is only here because we only have one 'table'
-       ))
-    (put 'BQQuery 'condition conditions)
-    (put 'BQQuery 'columns columns)
-    (if (member (nth 0 split-query) bq-actions)
-	(cond ((cl-search (nth 0 split-query) "select") (bq-select))
-	      ((cl-search (nth 0 split-query) "mark") (bq-mark))
-	      ((cl-search (nth 0 split-query) "kill") (bq-kill))
-	      ((cl-search (nth 0 split-query) "delete") (bq-delete))
-	      ((cl-search (nth 0 split-query) "save") (bq-save))
-	      ((cl-search (nth 0 split-query) "open") (bq-open)))
-      (message "sorry, not a valid statement..."))))
-
-
-(defun bq-mark-buffer (buffer)
-  "Mark BUFFER."
-  (let (s-test (iter 0) buffer-list-line)
+  (dolist (buff (buffer-list))
+    (bq-add-to-buffer-list buff))
+  (let (command-string action-word (getby-args (list)))
     (progn
-      (switch-to-buffer "*Buffer List*")
-      (setq s-test (buffer-substring-no-properties (point-min) (point-max)))
-      (dolist (buffer-list-line (split-string s-test "\n"))
-	(if (and (cl-search (buffer-name buffer) buffer-list-line) (cl-search (number-to-string (buffer-size buffer)) buffer-list-line))
-	    (progn (move-to-window-line iter) (Buffer-menu-mark)))
-	(setq iter (+ iter 1))))))
-
-(defun bq-delete-buffer (buffer)
-  "Delete BUFFER."
-  (let (s-test (iter 0) buffer-list-line)
-    (progn
-      (switch-to-buffer "*Buffer List*")
-      (setq s-test (buffer-substring-no-properties (point-min) (point-max)))
-      (dolist (buffer-list-line (split-string s-test "\n"))
-	(if (and (cl-search (buffer-name buffer) buffer-list-line) (cl-search (number-to-string (buffer-size buffer)) buffer-list-line))
-	    (progn (move-to-window-line iter) (Buffer-menu-delete)))
-	(setq iter (+ iter 1))))))
-
-(defun bq-save-buffer (buffer)
-  "Save BUFFER."
-  (let (s-test (iter 0) buffer-list-line)
-    (progn
-      (switch-to-buffer "*Buffer List*")
-      (setq s-test (buffer-substring-no-properties (point-min) (point-max)))
-      (dolist (buffer-list-line (split-string s-test "\n"))
-	(if (and (cl-search (buffer-name buffer) buffer-list-line) (cl-search (number-to-string (buffer-size buffer)) buffer-list-line))
-	    (progn (move-to-window-line iter) (Buffer-menu-save)))
-	(setq iter (+ iter 1))))))
-
-(defun bq-mark ()
-  "Marking."
-  (message "marking")
-  (setq BQStatements '())
-  (let (cond-set ww buff (buffer-res '()) conds current-statement stmt)
-    (if (get 'BQQuery 'where) ;; if where conditional
-	(progn
-	  (setq cond-set nil)
-	  (dolist (ww (split-string (nth 1 (split-string (get 'BQQuery 'query) "where ")) " "))
-	    (message ww)
-	    (cond
-	     ((member ww bq-conditionals) (put 'current-statement 'cond ww))
-	     ((member ww buffer-columns) (put 'current-statement 'col ww))
-	     (t (put 'current-statement 'match ww)))
-	    (push 'current-statement BQStatements)))
-      (setq cond-set t))
-    (dolist (buff (buffer-list))
-      (setq conds '())
-      (setq buffer-res '())
-      (dolist (stmt BQStatements)
-	(push (funcall (intern (concat "bq-" (get stmt 'cond))) (get stmt 'col) (get stmt 'match) buff) conds))
-      (if (member nil conds)
-	  (setq cond-set nil)
-	(setq cond-set t))
-      (cond
-       ((equal cond-set t) (bq-mark-buffer buff))))))
-
-(defun bq-kill ()
-  "kill."
-  (setq BQStatements '())
-  (let (cond-set ww buff (buffer-res '()) conds current-statement stmt)
-    (if (get 'BQQuery 'where) ;; if where conditional
-	(progn
-	  (setq cond-set nil)
-	  (dolist (ww (split-string (nth 1 (split-string (get 'BQQuery 'query) "where ")) " "))
-	    (message ww)
-	    (cond
-	     ((member ww bq-conditionals) (put 'current-statement 'cond ww))
-	     ((member ww buffer-columns) (put 'current-statement 'col ww))
-	     (t (put 'current-statement 'match ww)))
-	    (push 'current-statement BQStatements)))
-      (setq cond-set t))
-    (dolist (buff (buffer-list))
-      (setq conds '())
-      (setq buffer-res '())
-      (dolist (stmt BQStatements)
-	(push (funcall (intern (concat "bq-" (get stmt 'cond))) (get stmt 'col) (get stmt 'match) buff) conds))
-      (if (member nil conds)
-	  (setq cond-set nil)
-	(setq cond-set t))
-      (cond
-       ((equal cond-set t) (kill-buffer buff))))))
-
-(defun bq-open ()
-  "Open."
-  (setq BQStatements '())
-  (let (cond-set ww buff (buffer-res '()) conds current-statement stmt)
-    (if (get 'BQQuery 'where) ;; if where conditional
-	(progn
-	  (setq cond-set nil)
-	  (dolist (ww (split-string (nth 1 (split-string (get 'BQQuery 'query) "where ")) " "))
-	    (message ww)
-	    (cond
-	     ((member ww bq-conditionals) (put 'current-statement 'cond ww))
-	     ((member ww buffer-columns) (put 'current-statement 'col ww))
-	     (t (put 'current-statement 'match ww)))
-	    (push 'current-statement BQStatements)))
-      (setq cond-set t))
-    (dolist (buff (buffer-list))
-      (setq conds '())
-      (setq buffer-res '())
-      (dolist (stmt BQStatements)
-	(push (funcall (intern (concat "bq-" (get stmt 'cond))) (get stmt 'col) (get stmt 'match) buff) conds))
-      (if (member nil conds)
-	  (setq cond-set nil)
-	(setq cond-set t))
-      (cond
-       ((equal cond-set t)
-	(progn
-	  (switch-to-buffer buff)
-	  (catch 'return
-	    (when t
-	      (throw 'return t)))))))))
-
-(defun bq-delete ()
-  "Delete."
-  (setq BQStatements '())
-  (let (cond-set ww buff (buffer-res '()) conds current-statement stmt)
-    (if (get 'BQQuery 'where) ;; if where conditional
-	(progn
-	  (setq cond-set nil)
-	  (dolist (ww (split-string (nth 1 (split-string (get 'BQQuery 'query) "where ")) " "))
-	    (message ww)
-	    (cond
-	     ((member ww bq-conditionals) (put 'current-statement 'cond ww))
-	     ((member ww buffer-columns) (put 'current-statement 'col ww))
-	     (t (put 'current-statement 'match ww)))
-	    (push 'current-statement BQStatements)))
-      (setq cond-set t))
-    (dolist (buff (buffer-list))
-      (setq conds '())
-      (setq buffer-res '())
-      (dolist (stmt BQStatements)
-	(push (funcall (intern (concat "bq-" (get stmt 'cond))) (get stmt 'col) (get stmt 'match) buff) conds))
-      (if (member nil conds)
-	  (setq cond-set nil)
-	(setq cond-set t))
-      (cond
-       ((equal cond-set t) (bq-delete-buffer buff))))))
-
-(defun bq-save ()
-  "Save."
-  (setq BQStatements '())
-  (let (cond-set ww buff (buffer-res '()) conds current-statement stmt)
-    (if (get 'BQQuery 'where) ;; if where conditional
-	(progn
-	  (setq cond-set nil)
-	  (dolist (ww (split-string (nth 1 (split-string (get 'BQQuery 'query) "where ")) " "))
-	    (message ww)
-	    (cond
-	     ((member ww bq-conditionals) (put 'current-statement 'cond ww))
-	     ((member ww buffer-columns) (put 'current-statement 'col ww))
-	     (t (put 'current-statement 'match ww)))
-	    (push 'current-statement BQStatements)))
-      (setq cond-set t))
-    (dolist (buff (buffer-list))
-      (setq conds '())
-      (setq buffer-res '())
-      (dolist (stmt BQStatements)
-	(push (funcall (intern (concat "bq-" (get stmt 'cond))) (get stmt 'col) (get stmt 'match) buff) conds))
-      (if (member nil conds)
-	  (setq cond-set nil)
-	(setq cond-set t))
-      (cond
-       ((equal cond-set t) (bq-save-buffer buff))))))
-
-(defun bq-select ()
-  "Select function for bq-query."
-  (setq BQStatements '())
-  (let (selectors buff sel (res '()) (buffer-res '()) (conds '()) cond-set ww current-statement stmt)
-    (cond ;; find columns we are selecting
-     ((get 'BQQuery 'columns) (setq selectors (get 'BQQuery 'columns)))
-     ((cl-search "*" (get 'BQQuery 'query)) (setq selectors buffer-columns)))
-    (if (get 'BQQuery 'where) ;; if where conditional
-	(progn
-	  (setq cond-set nil)
-	  (dolist (ww (split-string (nth 1 (split-string (get 'BQQuery 'query) "where ")) " "))
-	    (cond
-	     ((member ww bq-conditionals) (put 'current-statement 'cond ww))
-	     ((member ww buffer-columns) (put 'current-statement 'col ww))
-	     (t (put 'current-statement 'match ww)))
-	    (push 'current-statement BQStatements)))
-      (setq cond-set t))
-    (dolist (buff (buffer-list))
-      (setq conds '())
-      (setq buffer-res '())
-      (dolist (stmt BQStatements)
-	(push (funcall (intern (concat "bq-" (get stmt 'cond))) (get stmt 'col) (get stmt 'match) buff) conds))
-      (if (member nil conds)
-	  (setq cond-set nil)
-	(setq cond-set t))
-      (dolist (sel selectors)
-	(cond
-	 ((and (string= "crm" sel) cond-set)  (push "yes" buffer-res))
-	 ((and (string= "name" sel) cond-set) (push (buffer-name buff) buffer-res))
-	 ((and (string= "size" sel) cond-set) (push (buffer-size buff) buffer-res))
-	 ((and (string= "mode" sel) cond-set) (push (buffer-local-value 'major-mode (get-buffer buff)) buffer-res))
-	 ((and (string= "file" sel) cond-set) (if (not (equal (buffer-file-name buff) nil)) (push (buffer-file-name buff) buffer-res)))
-	 (t "na")))
-      (if (length> buffer-res 0) (push buffer-res res)))
-    (message "res: %s" res)))
-
-(defun bq-= (column match buffer)
-  "Test if MATCH string and COLUMN value from BUFFER are equal."
-  (let (column-value)
-    (cond ;;"crm" "name" "size" "mode" "file"
-     ((string= column "name") (setq column-value (string= match (buffer-name buffer))))
-     ((string= column "size") (setq column-value (= match (buffer-size buffer))))
-     ((string= column "mode") (setq column-value (string= match (symbol-name (buffer-local-value 'major-mode (get-buffer buffer))))))
-     ((string= column "file")
-      (if (cl-search "dired" (symbol-name (buffer-local-value 'major-mode (get-buffer buffer))))
-	  (with-current-buffer buffer
-	    (setq column-value (string= match default-directory)))
-	(setq column-value (string= match (buffer-file-name buffer)))))
-     (t (setq column-value nil)))
-    (catch 'return
-    (when t
-      (throw 'return column-value)))))
-
-(defun bq-!= (column match buffer)
-  "Test if MATCH string and COLUMN value from BUFFER are not equal."
-  (let (column-value)
-    (cond ;;"crm" "name" "size" "mode" "file"
-     ((string= column "name") (setq column-value (not (string= match (buffer-name buffer)))))
-     ((string= column "size") (setq column-value (not (= match (buffer-size buffer)))))
-     ((string= column "mode") (setq column-value (not (string= match (symbol-name (buffer-local-value 'major-mode (get-buffer buffer)))))))
-     ((string= column "file")
-      (if (cl-search "dired" (symbol-name (buffer-local-value 'major-mode (get-buffer buffer))))
-	  (with-current-buffer buffer
-	    (setq column-value (not (string= match default-directory))))
-	(setq column-value (not (string= match (buffer-file-name buffer))))))
-     (t (setq column-value nil)))
-    (catch 'return
-    (when t
-      (throw 'return column-value)))))
-
-
-(defun bq-in (column match buffer)
-  "Test if MATCH string and COLUMN value from BUFFER are equal."
-  (let (column-value)
-    (cond ;;"crm" "name" "size" "mode" "file"
-     ((string= column "name") (setq column-value (not (equal (cl-search match (buffer-name buffer)) nil))))
-     ((string= column "size") (setq column-value (not (equal (cl-search match (number-to-string (buffer-size buffer))) nil))))
-     ((string= column "mode") (setq column-value (not (equal (cl-search match (symbol-name (buffer-local-value 'major-mode (get-buffer buffer)))) nil))))
-     ((string= column "file")
-      (if (cl-search "dired" (symbol-name (buffer-local-value 'major-mode (get-buffer buffer))))
-	  (with-current-buffer buffer
-	    (setq column-value (not (equal (cl-search match default-directory) nil))))
-	(setq column-value (not (equal (cl-search match (buffer-file-name buffer)) nil )))))
-     (t (setq column-value nil)))
-    (catch 'return
-    (when t
-      (throw 'return column-value)))))
-
-;;test cases
-"select * from buffers where .py in name"
-"select * from buffers where name = *scratch*"
-"select * from buffers where name != *scratch*"
-"mark * from buffers"
-"kill * from buffers where name is not *scratch*"
-"kill * from buffers where name is not like term"
-"kill * from buffers where name like Open-projects"
-"save buffers where name is main.py"
-"open buffer where name main.py" ;; open will open first result
+      (setq command-string (downcase (read-string ":" nil 'query-history nil)))
+      (push command-string query-history)
+      (setq action-word (nth 0 (split-string command-string " ")))
+      ;; TODO: if action word is select, get fields to select
+      (setq getby-args (bq-parse-where command-string))
+      (bq-action getby-args action-word))))
 
 (provide 'buffer-query)
 ;;; buffer-query.el ends here
