@@ -88,6 +88,7 @@
 	    (progn (move-to-window-line iter)
 		   (cond
 		    ((string-equal action "delete") (Buffer-menu-delete))
+		    ((string-equal action "save") (Buffer-menu-save))
 		    ((string-equal action "mark") (Buffer-menu-mark)))))
 	(setq iter (+ iter 1))))))))
 
@@ -171,7 +172,7 @@
 
 ;;;; USER FUNCTIONS 
 
-(defun buffer-query ()
+(defun buffer-query (&optional pre-command-string)
   "User function to query buffers based off data."
   (interactive)
   (clear-buffer-list)
@@ -180,7 +181,9 @@
     (bq-add-to-buffer-list buff))
   (let (command-string action-word (getby-args (list)))
     (progn
-      (setq command-string (downcase (read-string ":" nil 'query-history nil)))
+      (if (not (equal pre-command-string nil))
+	  (setq command-string pre-command-string)
+	(setq command-string (downcase (read-string ":" nil 'query-history nil))))
       (push command-string query-history)
       (setq action-word (nth 0 (split-string command-string " ")))
       ;; TODO: if action word is select, get fields to select
