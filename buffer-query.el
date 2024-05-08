@@ -82,14 +82,25 @@
   "Tiny wrapper to clear 'buffer-list'."
   (setq *buffer-query-list* (list)))
 
-(defun bq-do-action-buffer (buffer action)
+
+;; this is maybe how to handle with-current-buffer?
+;; (defun bbbq-test-fun (&optional &key nonroute)
+;;   (let ((run-fun #'message))
+;;     (if nonroute
+;; 	(setq run-fun #'insert))
+;;       (apply run-fun '("test"))))
+;; (bbbq-test-fun)
+;; (bbbq-test-fun :nonroute t)
+
+
+(defun bq-do-action-buffer (buffer action &optional &key nonroute)
   "Do ACTION to BUFFER."
-  (let (s-test (iter 0))
+  (let (s-test (iter 0) (curr-buff (current-buffer)))
       (cond
        ((string-equal action "kill") (kill-buffer buffer))
        ((string-equal action "open") (switch-to-buffer buffer))
       (t (progn
-      (switch-to-buffer "*Buffer List*")
+      (switch-to-buffer "*Buffer List*") ;; maybe if reoute use with-current-buffer
       (setq s-test (buffer-substring-no-properties (point-min) (point-max)))
       (dolist (buffer-list-line (split-string s-test "\n"))
 	(if (and (cl-search (buffer-name buffer) buffer-list-line) (cl-search (number-to-string (buffer-size buffer)) buffer-list-line))
@@ -98,7 +109,8 @@
 		    ((string-equal action "delete") (Buffer-menu-delete))
 		    ((string-equal action "save") (Buffer-menu-save))
 		    ((string-equal action "mark") (Buffer-menu-mark)))))
-	(setq iter (+ iter 1))))))))
+	(setq iter (+ iter 1))))))
+  (if nonroute (switch-to-buffer curr-buff))))
 
 (defun bq--get-buffer-data ()
   "Inital Call to get Buffers metadata and store in symbol BQBuffers."
@@ -136,7 +148,8 @@
       (when t
     (throw 'return acc-res)))))
 
-(defun bq-action (fn-list action)
+
+(defun bq-action (fn-list action &optional &key nonroute)
   "Call ACTION on buffers that match FN-LIST parameters."
   (let (res ret-res)
     (setq ret-res "yay")
@@ -144,7 +157,7 @@
 	(setq ret-res (bq-select fn-list)))
     (setq res (apply #'bq-get-by-cond fn-list))
     (dolist (buff res)
-      (bq-do-action-buffer (get-buffer (plist-get buff 'name)) action))
+      (bq-do-action-buffer (get-buffer (plist-get buff 'name)) action :nonroute nonroute))
     (catch 'return
     (when t
       (throw 'return ret-res)))))
@@ -195,7 +208,7 @@
 
 ;;;; USER FUNCTIONS
 
-(defun buffer-query (&optional pre-command-string)
+(defun buffer-query (&optional pre-command-string &key nonroute)
   "User function to query buffers based off data, Call programadically with PRE-COMMAND-STRING."
   (interactive)
   (clear-buffer-list)
@@ -212,7 +225,7 @@
       (setq getby-args (bq-parse-where command-string))
       (catch 'return
       (when t
-      (throw 'return (bq-action getby-args action-word)))))))
+      (throw 'return (bq-action getby-args action-word :nonroute nonroute)))))))
 
 
 (provide 'buffer-query)
