@@ -20,17 +20,13 @@
 
 ;;; Commentary:
 
-;; (bq-select (bq-parse-where "select name from buffer"))
-;; (bq-select (bq-parse-where "select name from buffer where .el in file"))
-;; (apply (intern "select") (list (bq-parse-where "select name from buffer where .el in file")))
-
 ;;; Code:
 (defvar *buffer-query-list* (list))
 (defvar bq-conditionals (list "=" "!=" "not in" "in" "like" "not like"))
 (defvar buffer-columns (list "crm" "name" "size" "mode" "file"))
 (defvar query-history (list ""))
 
-;;;; HELPER FUNCTIONS 
+;;;; HELPER FUNCTIONS
 
 (defun string-in(value col-value)
   "Check if VALUE inside COL-VALUE returning t or nil."
@@ -38,9 +34,21 @@
     (when t
       (throw 'return (not (equal (cl-search value col-value) nil))))))
 
+(defun string-not-in(value col-value)
+  "Check if VALUE not inside COL-VALUE returning t or nil."
+  (catch 'return
+    (when t
+      (throw 'return (equal (cl-search value col-value) nil)))))
+
+(defun string-not-equal(s1 s2)
+  "Check if S1 not equal S2."
+  (catch 'return
+    (when t
+      (throw 'return (not (string-equal s1 s2))))))
+
 (defun get-list-remainder (from-list &rest haves)
   "From a FROM-LIST Look at all the HAVES, return the value you do not have."
-  (let (unsaved (list))
+  (let ((unsaved (list)))
   (dolist (fl from-list)
       (cond ((equal (member fl haves) nil) (push fl unsaved))))
     (catch 'return
@@ -71,12 +79,12 @@
     'crm "TODO") *buffer-query-list*))
 
 (defun clear-buffer-list ()
-  "Tiny wrapper to clear buffer-list."
+  "Tiny wrapper to clear 'buffer-list'."
   (setq *buffer-query-list* (list)))
 
 (defun bq-do-action-buffer (buffer action)
   "Do ACTION to BUFFER."
-  (let (s-test (iter 0) buffer-list-line)
+  (let (s-test (iter 0))
       (cond
        ((string-equal action "kill") (kill-buffer buffer))
        ((string-equal action "open") (switch-to-buffer buffer))
@@ -114,25 +122,36 @@
 
 
 
-;;;; ACTION FUNCTIONS 
+;;;; ACTION FUNCTIONS
 
 (defun bq-select (fn-list)
   "Print all buffers that match FN-LIST parameters."
+  (setq acc-res '())
   (let (res)
-    (setq res (apply (intern "bq-get-by-cond") fn-list))
-  (message "%s" res)))
+    (setq res (apply #'bq-get-by-cond fn-list))
+    (dolist (rr res)
+      (push (format "%s" (plist-get rr 'name)) acc-res))
+    (message "%s" acc-res)
+    (catch 'return
+      (when t
+    (throw 'return acc-res)))))
 
-;; TODO: these can all probably be condensed to a func
 (defun bq-action (fn-list action)
   "Call ACTION on buffers that match FN-LIST parameters."
-  (let (res)
-    (setq res (apply (intern "bq-get-by-cond") fn-list))
+  (let (res ret-res)
+    (setq ret-res "yay")
+    (if (string= action "select")
+	(setq ret-res (bq-select fn-list)))
+    (setq res (apply #'bq-get-by-cond fn-list))
     (dolist (buff res)
-      (bq-do-action-buffer (get-buffer (plist-get buff 'name)) action))))
+      (bq-do-action-buffer (get-buffer (plist-get buff 'name)) action))
+    (catch 'return
+    (when t
+      (throw 'return ret-res)))))
 
 
 
-;;;; LOGIC FUNCTIONS 
+;;;; LOGIC FUNCTIONS
 
 (defun bq-get-by-cond (&optional value q-cond &key col)
   "Given a VALUE and a COL and Q-COND, return a list of buffers that have conditions that match the value."
@@ -142,6 +161,8 @@
       (setq col ""))
   (cl-remove-if-not #'(lambda (x) (apply (intern q-cond) (list value (plist-get x (intern col))))) *buffer-query-list*))
 
+
+;; TODO: if action word is select, get fields to select
 (defun bq-parse-where (command-string)
   "Parse COMMAND-STRING into a arg list for action-word function."
   (if (not (cl-search "where" command-string))
@@ -158,22 +179,24 @@
 	(dolist (pw-word (split-string pw " "))
 	  (if (member pw-word buffer-columns) (setq parsed-col pw-word))
 	  (if (member pw-word bq-conditionals) (setq parsed-cond pw-word))
-	  (if (string-equal pw-word "not") (string-join parsed-cond "not")))
+	  (if (string-equal pw-word "not") (string-join "not" parsed-cond)))
       (cond
        ((> (length (get-list-remainder (split-string pw " ") parsed-col parsed-cond)) 0)
 	(setq parsed-val (nth 0 (get-list-remainder (split-string pw " ") parsed-col parsed-cond)))))
       (message (format "%s %s %s" parsed-col parsed-cond parsed-val)))
       (cond
        ((string-equal parsed-cond "=") (setq parsed-cond "string-equal"));; todo finish adding conditionals
-       ((string-equal parsed-cond "in") (setq parsed-cond "string-in")))
+       ((string-equal parsed-cond "!=") (setq parsed-cond "string-not-equal"))
+       ((string-equal parsed-cond "in") (setq parsed-cond "string-in"))
+       ((string-equal parsed-cond "not in") (setq parsed-cond "string-not-in")))
       (catch 'return
     (when t
       (throw 'return (list parsed-val parsed-cond :col parsed-col))))))))
 
-;;;; USER FUNCTIONS 
+;;;; USER FUNCTIONS
 
 (defun buffer-query (&optional pre-command-string)
-  "User function to query buffers based off data."
+  "User function to query buffers based off data, Call programadically with PRE-COMMAND-STRING."
   (interactive)
   (clear-buffer-list)
   (bq--get-buffer-data)
@@ -186,9 +209,11 @@
 	(setq command-string (downcase (read-string ":" nil 'query-history nil))))
       (push command-string query-history)
       (setq action-word (nth 0 (split-string command-string " ")))
-      ;; TODO: if action word is select, get fields to select
       (setq getby-args (bq-parse-where command-string))
-      (bq-action getby-args action-word))))
+      (catch 'return
+      (when t
+      (throw 'return (bq-action getby-args action-word)))))))
+
 
 (provide 'buffer-query)
 ;;; buffer-query.el ends here
